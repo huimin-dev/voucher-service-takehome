@@ -1,10 +1,12 @@
 package com.prizm.campaign;
 
 import com.prizm.campaign.dto.RedeemResponse;
+import com.prizm.campaign.service.AuditClient;
 import com.prizm.campaign.service.VoucherService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -13,6 +15,13 @@ class VoucherServiceTest {
 
     @Autowired
     private VoucherService voucherService;
+
+    /**
+     * Keeps tests independent of the external audit service and matches the mock
+     * used by the other redemption tests so their application context can be reused.
+     */
+    @MockBean
+    private AuditClient auditClient;
 
     @Test
     void redeemActiveVoucherSucceeds() {
