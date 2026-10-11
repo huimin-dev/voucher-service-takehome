@@ -22,6 +22,14 @@ public class Campaign {
 
     private boolean active;
 
+    /**
+     * Max vouchers one user may redeem in this campaign.
+     * Initialised to the default so a Campaign built in code (tests, future
+     * create endpoint) is never born with an accidental limit of 0.
+     */
+    @Column(name = "per_user_limit")
+    private int perUserLimit = 2;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getName() { return name; }
@@ -34,4 +42,6 @@ public class Campaign {
     public void setRemainingStock(int remainingStock) { this.remainingStock = remainingStock; }
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
+    public int getPerUserLimit() { return perUserLimit; }
+    public void setPerUserLimit(int perUserLimit) { this.perUserLimit = perUserLimit; }
 }
