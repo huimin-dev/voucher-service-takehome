@@ -90,8 +90,9 @@ public class VoucherService {
                 voucher.getId(), campaign.getId(), userId, new Date());
         redemptionRepository.save(redemption);
 
-        // Delivered by RedemptionAuditListener after this transaction commits,
-        // so the campaign row lock is released before any remote call is made.
+        // Delivered by RedemptionAuditListener after this transaction commits, so
+        // the campaign row lock is released before any remote call is made. The
+        // request thread still blocks on that call - see RedemptionAuditListener.
         events.publishEvent(new VoucherRedeemedEvent(
                 campaign.getClientCode(), voucher.getCode(), userId));
 

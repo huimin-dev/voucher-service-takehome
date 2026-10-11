@@ -8,13 +8,20 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
- * Sends the audit event only once the redemption is durable.
+ * Sends the audit event once the redemption is durable.
  *
- * AFTER_COMMIT matters for two reasons. The redemption now holds a row lock on
- * the campaign for the length of its transaction, and AuditClient calls a remote
- * host over a RestTemplate with no timeouts - inside the transaction, a hung
- * audit host would hold that lock and block every redemption in the campaign.
- * And an audit failure must never roll back a redemption the user already has.
+ * AFTER_COMMIT releases the campaign row lock before
+ * any remote call is made, so a slow audit host can no longer block every other
+ * redemption in the campaign. And an audit failure can no longer roll back a
+ * redemption that has already committed.
+ *
+ * It does NOT make the call non-blocking. AFTER_COMMIT callbacks run
+ * synchronously on the thread that committed - here, the request thread - so a
+ * hung audit host still holds that thread for the whole call, and under load
+ * would exhaust the servlet pool. AuditClient's RestTemplate is built with no
+ * connect or read timeout, so "the whole call" has no upper bound. Fixing that
+ * needs timeouts plus handing delivery to a queue or an @Async executor; both
+ * are out of scope here and recorded in NOTES.md.
  */
 @Component
 public class RedemptionAuditListener {
@@ -33,9 +40,8 @@ public class RedemptionAuditListener {
             auditClient.recordRedemption(
                     event.clientCode(), event.voucherCode(), event.userId());
         } catch (Exception e) {
-            // Swallowed on purpose: the redemption is already committed and the
-            // caller has been answered. Logged with the cause, which the previous
-            // inline call threw away.
+            // The redemption is already committed. Log delivery failures without
+            // turning a successful redemption into an error response.
             log.error("audit call failed for voucher {}", event.voucherCode(), e);
         }
     }
