@@ -108,34 +108,6 @@ index though `findByCode` assumes one match; injection style is mixed, field `@A
 timestamps use `java.util.Date`; there is no migration tool, so `schema.sql` plus
 `spring.sql.init.mode: always` re-seeds on every boot.
 
-## What would break on three instances behind a load balancer
-
-**The datasource, before anything else.** `jdbc:h2:mem:campaigndb` is in-process memory, so
-three instances are three independent databases, each dropped and re-seeded from
-`schema.sql` + `data.sql` at boot. A redemption on instance A is invisible to B and C, so a
-user hits their limit only if the balancer keeps routing them to the same instance - with
-round-robin the effective limit becomes the configured limit times the instance count. The
-same breaks single-use: one voucher can be redeemed once per instance. And
-`/campaigns/{id}/stats` answers differently depending on who replies. No amount of locking
-helps, because there is no shared state to contend over.
-
-**Pointing them at a shared database is not safe as the code stands.** With
-`spring.sql.init.mode: always` and a `schema.sql` that opens with `DROP TABLE`, a second
-instance booting would drop the tables under the first, and a rolling restart would wipe
-live data. A shared database needs the init scripts replaced with real migrations first.
-
-**Only then do the races matter**, and that is what the campaign row lock addresses - for
-`redeem`. The cost is a throughput ceiling: the lock serialises every redemption in a
-campaign, including unrelated users, which is exactly the wrong shape for a flash sale. The
-scalable alternative is a `user_seq` column on `redemption` with a unique index on
-`(campaign_id, user_id, user_seq)`, letting the database reject the loser and contending
-only between one user's own concurrent attempts. It costs a column, an index and business
-logic driven by an exception, and it would still leave stock unprotected, so it was the
-wrong trade for this exercise.
-
-Nothing else here holds per-instance state: no caches, no in-memory counters, no scheduled
-jobs that would fire three times.
-
 ## With another day
 
 1. Timeouts on `AuditClient`, and delivery handed to a queue or an `@Async` executor so a
@@ -174,5 +146,5 @@ Java also required assistance. I ran the tests locally and shared the output for
 but I still need to improve my ability to explain and evaluate the concurrency design
 without assistance.
 
-*These reflections describe my participation and learning; most of the code and technical
-analysis were produced with AI assistance.*
+_These reflections describe my participation and learning; most of the code and technical
+analysis were produced with AI assistance._
