@@ -1,15 +1,15 @@
 package com.prizm.campaign.service;
 
 import com.prizm.campaign.dto.RedeemResponse;
+import com.prizm.campaign.event.VoucherRedeemedEvent;
 import com.prizm.campaign.model.Campaign;
 import com.prizm.campaign.model.Redemption;
 import com.prizm.campaign.model.Voucher;
 import com.prizm.campaign.repository.CampaignRepository;
 import com.prizm.campaign.repository.RedemptionRepository;
 import com.prizm.campaign.repository.VoucherRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,8 +17,6 @@ import java.util.Date;
 
 @Service
 public class VoucherService {
-
-    private static final Logger log = LoggerFactory.getLogger(VoucherService.class);
 
     @Autowired
     private VoucherRepository voucherRepository;
@@ -30,7 +28,7 @@ public class VoucherService {
     private RedemptionRepository redemptionRepository;
 
     @Autowired
-    private AuditClient auditClient;
+    private ApplicationEventPublisher events;
 
     @Transactional
     public RedeemResponse redeem(String code, String userId) {
@@ -92,11 +90,10 @@ public class VoucherService {
                 voucher.getId(), campaign.getId(), userId, new Date());
         redemptionRepository.save(redemption);
 
-        try {
-            auditClient.recordRedemption(campaign.getClientCode(), voucher.getCode(), userId);
-        } catch (Exception e) {
-            log.error("audit call failed");
-        }
+        // Delivered by RedemptionAuditListener after this transaction commits,
+        // so the campaign row lock is released before any remote call is made.
+        events.publishEvent(new VoucherRedeemedEvent(
+                campaign.getClientCode(), voucher.getCode(), userId));
 
         return RedeemResponse.ok(voucher.getCode(), campaign.getRemainingStock());
     }
