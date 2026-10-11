@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Date;
 
@@ -31,8 +32,27 @@ public class VoucherService {
     @Autowired
     private AuditClient auditClient;
 
+    @Transactional
     public RedeemResponse redeem(String code, String userId) {
 
+        // Unlocked, and deliberately a projection rather than an entity read: it
+        // exists only to discover which campaign row to lock, and to fail fast on
+        // an unknown code. Loading the Voucher here would put an instance in the
+        // persistence context, and the read below would then silently hand back
+        // that same stale instance instead of the committed row.
+        Long campaignId = voucherRepository.findCampaignIdByCode(code).orElse(null);
+        if (campaignId == null) {
+            return RedeemResponse.fail("Voucher not found");
+        }
+
+        // Lock first, before anything is read for a decision.
+        Campaign campaign = campaignRepository.findByIdForUpdate(campaignId).orElse(null);
+        if (campaign == null) {
+            return RedeemResponse.fail("Campaign not found");
+        }
+
+        // First entity read of the voucher, taken while holding the lock, so the
+        // status checks below see whatever the previous lock holder committed.
         Voucher voucher = voucherRepository.findByCode(code);
         if (voucher == null) {
             return RedeemResponse.fail("Voucher not found");
@@ -45,8 +65,6 @@ public class VoucherService {
         if ("VOID".equals(voucher.getStatus())) {
             return RedeemResponse.fail("Voucher is void");
         }
-
-        Campaign campaign = campaignRepository.findById(voucher.getCampaignId()).get();
 
         if (!campaign.isActive()) {
             return RedeemResponse.fail("Campaign is not active");
